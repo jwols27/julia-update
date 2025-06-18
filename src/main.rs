@@ -1,17 +1,15 @@
+mod dotfiles;
 mod linha_comando;
 mod pergunta_opcao;
 
+use crate::dotfiles::Dotfiles;
 use crate::linha_comando::LinhaComando;
 use crate::pergunta_opcao::PerguntaOpcao;
 use anyhow::Result;
-use chrono::Local;
 use colored::Colorize;
-use once_cell::sync::Lazy;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::{env, io};
-
-static HOME: Lazy<String> = Lazy::new(|| env::var("HOME").expect("Erro ao buscar pasta Home"));
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -22,8 +20,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    let home = env::var("HOME")?;
+
     LinhaComando::new("clear", &[]).execute()?;
-    gravar_pacotes()?;
+    gravar_pacotes(home.clone())?;
 
     print_julia(" 1 de 5: Atualizando repositório oficial");
     LinhaComando::sudo("pacman", &["-Syu"]).execute()?;
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     if orfaos_qtd > 0 {
         let resposta = perguntar_sim_nao(" Deseja remover todos os pacotes orfãos?");
         match resposta.as_str() {
-            "s" => apagar_orfaos(orfaos.clone())?,
+            "s" => apagar_orfaos(orfaos.clone()),
             _ => {}
         }
     }
@@ -63,7 +63,8 @@ fn main() -> Result<()> {
     }
 
     print_julia("\n 5 de 5: Atualizando dotfiles");
-    let dotfiles_status = dotfiles(&["status"])?;
+    let dotfiles = Dotfiles::new(home);
+    let dotfiles_status = dotfiles.command(&["status"])?;
 
     println!("{}", dotfiles_status);
     if dotfiles_status.contains("nothing to commit") {
@@ -71,7 +72,7 @@ fn main() -> Result<()> {
     } else {
         let resposta = perguntar_sim_nao(" Deseja salvar alterações?");
         match resposta.as_str() {
-            "s" => salvar_dotfiles()?,
+            "s" => dotfiles.salvar()?,
             _ => {}
         }
     }
@@ -105,11 +106,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn gravar_pacotes() -> Result<()> {
+fn gravar_pacotes(home: String) -> Result<()> {
     let pacotes = LinhaComando::new("pacman", &["-Qqe"]).unsafe_get()?;
 
-    let caminho_saida = format!("{}/Backups/pacotes.txt", *HOME);
-    let caminho_ignorar = format!("{}/Backups/pacotes-ignorar.txt", *HOME);
+    let caminho_saida = format!("{}/Backups/pacotes.txt", home);
+    let caminho_ignorar = format!("{}/Backups/pacotes-ignorar.txt", home);
 
     let ignorar: Vec<String> = BufReader::new(File::open(caminho_ignorar)?)
         .lines()
@@ -130,7 +131,7 @@ fn gravar_pacotes() -> Result<()> {
     Ok(())
 }
 
-fn perguntar_sim_nao<'a>(pergunta: &str) -> String {
+fn perguntar_sim_nao(pergunta: &str) -> String {
     perguntar(pergunta, PerguntaOpcao::sim_nao(), PerguntaOpcao::SIM)
 }
 
@@ -150,55 +151,13 @@ fn perguntar(pergunta: &str, opcoes: Vec<PerguntaOpcao>, padrao: &str) -> String
             return o.opcao.clone();
         }
     }
-    padrao.to_owned()
+    padrao.to_owned().to_ascii_lowercase()
 }
 
-fn dotfiles(extra_args: &[&str]) -> Result<String> {
-    let home = HOME.clone();
-    let git_dir = format!("{}/.dotfiles", home);
-    let work_tree = home;
-
-    let mut args = vec![
-        "--git-dir",
-        git_dir.as_str(),
-        "--work-tree",
-        work_tree.as_str(),
-    ];
-    args.extend_from_slice(extra_args);
-
-    let output = LinhaComando::new("git", &args).unsafe_get()?;
-
-    Ok(output)
-}
-
-fn salvar_dotfiles() -> Result<()> {
-    print!("{}", " Mensagem do commit (opcional): ".magenta().bold());
-    io::stdout().flush()?;
-
-    let mut mensagem_commit = String::new();
-    io::stdin()
-        .read_line(&mut mensagem_commit)
-        .expect("Erro ao ler");
-
-    let mut commit = mensagem_commit.trim().to_string();
-    if commit.is_empty() {
-        commit = format!("Atualização {}", Local::now().format("%Y-%m-%d %T"));
-    }
-
-    dotfiles(&["add", "-u"])?;
-    dotfiles(&["commit", "-m", &commit])?;
-    dotfiles(&["push", "-u", "origin", "main"])?;
-    print_julia(" Enviado!");
-
-    Ok(())
-}
-
-fn apagar_orfaos(orfaos: Vec<String>) -> Result<()> {
-    let mut args: Vec<&str> = Vec::new();
-    args.push("-Rns");
+fn apagar_orfaos(orfaos: Vec<String>) -> () {
+    let mut args: Vec<&str> = vec!["-Rns"];
     args.extend(orfaos.iter().map(|s| s.as_str()));
-    LinhaComando::new("yay", &args).execute()?;
-    Ok(())
+    LinhaComando::new("yay", &args).execute().expect("error");
 }
 
 fn print_julia(msg: &str) {

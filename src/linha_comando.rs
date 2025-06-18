@@ -16,6 +16,13 @@ impl LinhaComando {
         Self::instantiate(false, cmd, args)
     }
 
+    pub fn fresh(comando: PathBuf, argumentos: Vec<String>) -> Self {
+        Self {
+            comando,
+            argumentos,
+        }
+    }
+
     fn instantiate(sudo: bool, cmd: &str, args: &[&str]) -> Self {
         let comando = if sudo { "sudo" } else { cmd }.to_owned();
         let mut argumentos: Vec<String> = Vec::new();
