@@ -1,15 +1,15 @@
 mod dotfiles;
 mod linha_comando;
-mod pergunta_opcao;
+mod pergunta;
 
 use crate::dotfiles::Dotfiles;
 use crate::linha_comando::LinhaComando;
-use crate::pergunta_opcao::PerguntaOpcao;
+use crate::pergunta::Pergunta;
 use anyhow::Result;
 use colored::Colorize;
+use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::{env, io};
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let home = env::var("HOME")?;
 
     LinhaComando::new("clear", &[]).execute()?;
-    gravar_pacotes(home.clone())?;
+    gravar_pacotes(&home)?;
 
     print_julia(" 1 de 5: Atualizando repositório oficial");
     LinhaComando::sudo("pacman", &["-Syu"]).execute()?;
@@ -49,14 +49,14 @@ fn main() -> Result<()> {
         },
     );
     if orfaos_qtd > 0 {
-        let resposta = perguntar_sim_nao(" Deseja remover todos os pacotes orfãos?");
+        let resposta = Pergunta::sim_nao(" Deseja remover todos os pacotes orfãos?");
         match resposta.as_str() {
             "s" => apagar_orfaos(orfaos.clone()),
             _ => {}
         }
     }
 
-    let resposta = perguntar_sim_nao("\n Deseja limpar o cache?");
+    let resposta = Pergunta::sim_nao("\n Deseja limpar o cache?");
     match resposta.as_str() {
         "s" => LinhaComando::new("paccache", &["-r"]).execute()?,
         _ => {}
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     if dotfiles_status.contains("nothing to commit") {
         print_julia(" Nada a fazer");
     } else {
-        let resposta = perguntar_sim_nao(" Deseja salvar alterações?");
+        let resposta = Pergunta::sim_nao(" Deseja salvar alterações?");
         match resposta.as_str() {
             "s" => dotfiles.salvar()?,
             _ => {}
@@ -92,11 +92,10 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let opcoes: Vec<PerguntaOpcao> = PerguntaOpcao::com_nao(&["d", "r"]);
-    let resposta = perguntar(
+    let resposta = Pergunta::com_nao(
         "\n Deseja (d)esligar ou (r)einiciar o sistema?",
-        opcoes,
-        PerguntaOpcao::NAO,
+        &["d", "r"],
+        Pergunta::NAO,
     );
     match resposta.as_str() {
         "d" => LinhaComando::sudo("shutdown", &["now"]).execute()?,
@@ -106,7 +105,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn gravar_pacotes(home: String) -> Result<()> {
+fn gravar_pacotes(home: &String) -> Result<()> {
     let pacotes = LinhaComando::new("pacman", &["-Qqe"]).unsafe_get()?;
 
     let caminho_saida = format!("{}/Backups/pacotes.txt", home);
@@ -129,29 +128,6 @@ fn gravar_pacotes(home: String) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn perguntar_sim_nao(pergunta: &str) -> String {
-    perguntar(pergunta, PerguntaOpcao::sim_nao(), PerguntaOpcao::SIM)
-}
-
-fn perguntar(pergunta: &str, opcoes: Vec<PerguntaOpcao>, padrao: &str) -> String {
-    let escolhas = PerguntaOpcao::listar(&opcoes, &padrao);
-
-    print!("{} {} ", pergunta.magenta().bold(), escolhas.green());
-    io::stdout().flush().expect("error");
-
-    let mut buffer = String::new();
-    let stdin = io::stdin();
-    stdin.read_line(&mut buffer).expect("Erro ao ler");
-    let input = buffer.trim().to_ascii_lowercase();
-
-    for o in opcoes {
-        if input == o.opcao {
-            return o.opcao.clone();
-        }
-    }
-    padrao.to_owned().to_ascii_lowercase()
 }
 
 fn apagar_orfaos(orfaos: Vec<String>) -> () {
