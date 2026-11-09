@@ -64,10 +64,10 @@ fn main() -> Result<()> {
 
     print_julia("\n 5 de 5: Atualizando dotfiles");
     let dotfiles = Dotfiles::new(home);
-    let dotfiles_status = dotfiles.command(&["status"])?;
+    let dotfiles_status = dotfiles.command(&["status", "--porcelain", "--untracked-files=no"])?;
 
     println!("{}", dotfiles_status);
-    if dotfiles_status.contains("nothing to commit") {
+    if dotfiles_status.trim().is_empty() {
         print_julia(" Nada a fazer");
     } else {
         let resposta = Pergunta::sim_nao(" Deseja salvar alterações?");
